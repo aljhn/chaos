@@ -117,3 +117,97 @@ class Heat1D(InitialBoundaryValueProblem):
         u_t = u_grad[0]
         u_xx = u_hessian[1, 1]
         return u_t - self.k * u_xx
+
+
+class InitialValueProblem(ABC):
+    domain_boundary: Float[Array, "2"]
+
+    def __init__(self, domain_boundary: Float[Array, "2"]):
+        self.domain_boundary = domain_boundary
+
+    @abstractmethod
+    def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch output_dim"]:
+        pass
+
+    def sample_validation(
+        self, key: PRNGKeyArray, n: int
+    ) -> tuple[Float[Array, "batch 1"], Float[Array, "batch output_dim"]]:
+        domain_boundary_min = self.domain_boundary[0, 0]
+        domain_boundary_max = self.domain_boundary[0, 1]
+        t = jax.random.uniform(key, shape=(n, 1), minval=domain_boundary_min, maxval=domain_boundary_max)
+        x = self.get_true(t)
+        return t, x
+
+    @abstractmethod
+    def diffeq(
+        self,
+        model: Callable[[Float[Array, "1"]], Float[Array, " output_dim"]],
+        t: Float[Array, " input_dim"],
+    ) -> Float[Array, " output_dim"]:
+        pass
+
+
+class MassSpringDamper(InitialValueProblem):
+    m: float
+    c: float
+    k: float
+
+    x0: float
+    dx0: float
+    t0: float
+    t1: float
+
+    def __init__(
+        self,
+        m: float,
+        c: float,
+        k: float,
+        x0: float,
+        dx0: float,
+        t0: float,
+        t1: float,
+    ):
+        domain_boundary = jnp.array([[t0, t1]])
+        super().__init__(domain_boundary)
+        self.m = m
+        self.c = c
+        self.k = k
+
+        self.x0 = x0
+        self.dx0 = dx0
+        self.t0 = t0
+        self.t1 = t1
+
+    def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch output_dim"]:
+        alpha = self.c / (2.0 * self.m)
+        omega_squared = self.k / self.m
+        Delta = alpha * alpha - omega_squared
+
+        tau = t - self.t0
+
+        C = 1.0
+        S = tau
+
+        if Delta < 0:
+            sqrt_minus_Delta = jnp.sqrt(-Delta)
+            C = jnp.cos(sqrt_minus_Delta * tau)
+            S = jnp.sin(sqrt_minus_Delta * tau) / sqrt_minus_Delta
+        elif Delta > 0:
+            sqrt_Delta = jnp.sqrt(Delta)
+            C = jnp.cosh(sqrt_Delta * tau)
+            S = jnp.sinh(sqrt_Delta * tau) / sqrt_Delta
+
+        return jnp.exp(-alpha * tau) * (self.x0 * C + (self.dx0 + alpha * self.x0) * S)
+
+    def diffeq(
+        self,
+        model: Callable[[Float[Array, "1"]], Float[Array, " output_dim"]],
+        t: Float[Array, " input_dim"],
+    ) -> Float[Array, " output_dim"]:
+        def x(t):
+            return model(t)[0]
+
+        dx = jax.grad(x)(t)[0]
+        ddx = jax.hessian(x)(t)[0, 0]
+
+        return self.m * ddx + self.c * dx + self.k * x(t)
