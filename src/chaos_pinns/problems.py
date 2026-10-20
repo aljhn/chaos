@@ -149,7 +149,7 @@ class InitialValueProblem(ABC):
 
 class MassSpringDamper(InitialValueProblem):
     m: float
-    c: float
+    d: float
     k: float
 
     x0: float
@@ -160,7 +160,7 @@ class MassSpringDamper(InitialValueProblem):
     def __init__(
         self,
         m: float,
-        c: float,
+        d: float,
         k: float,
         x0: float,
         dx0: float,
@@ -170,7 +170,7 @@ class MassSpringDamper(InitialValueProblem):
         domain_boundary = jnp.array([[t0, t1]])
         super().__init__(domain_boundary)
         self.m = m
-        self.c = c
+        self.d = d
         self.k = k
 
         self.x0 = x0
@@ -179,7 +179,7 @@ class MassSpringDamper(InitialValueProblem):
         self.t1 = t1
 
     def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch output_dim"]:
-        alpha = self.c / (2.0 * self.m)
+        alpha = self.d / (2.0 * self.m)
         omega_squared = self.k / self.m
         Delta = alpha * alpha - omega_squared
 
@@ -210,4 +210,4 @@ class MassSpringDamper(InitialValueProblem):
         dx = jax.grad(x)(t)[0]
         ddx = jax.hessian(x)(t)[0, 0]
 
-        return self.m * ddx + self.c * dx + self.k * x(t)
+        return self.m * ddx + self.d * dx + self.k * x(t)

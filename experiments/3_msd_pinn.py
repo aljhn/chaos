@@ -9,7 +9,7 @@ from jaxtyping import PRNGKeyArray
 from chaos_pinns.collocation import UniformCollocationSampler
 from chaos_pinns.dataloading import TrainLoader, ValidationLoader
 from chaos_pinns.models import MLP
-from chaos_pinns.problems import MassSpringDamper, InitialValueProblem
+from chaos_pinns.problems import InitialValueProblem, MassSpringDamper
 from chaos_pinns.training import Model, train_pinn
 
 
@@ -19,26 +19,26 @@ class Config:
 
     input_size: int = 1
     output_size: int = 1
-    hidden_size: int = 64
-    num_hidden_layers: int = 6
+    hidden_size: int = 32
+    num_hidden_layers: int = 4
 
     m = 1.0
-    c = 1.0
-    k = 1.0
+    d = 5.0
+    k = 500.0
 
     x0 = 1.0
-    dx0 = 1.0
+    dx0 = 0.0
     t0 = 0.0
-    t1 = 10.0
+    t1 = 1.0
 
     n_validation: int = 100
-    n_collocation: int = 1000
+    n_collocation: int = 100
     batch_size: int = 32
 
     learning_rate: float = 1e-3
-    epochs: int = 5000
+    epochs: int = 20000
     print_every: int = 100
-    physics_weight: float = 1e-1
+    physics_weight: float = 1e-4
 
 
 def train_model(config: Config, problem: InitialValueProblem, key: PRNGKeyArray) -> Model:
@@ -81,7 +81,7 @@ def evaluate_model(model: Model, problem: InitialValueProblem) -> None:
     t0 = problem.domain_boundary[0, 0]
     t1 = problem.domain_boundary[0, 1]
 
-    n = 100
+    n = 1000
     t = jnp.linspace(t0, t1, n)[:, None]
     x = jax.vmap(model)(t)
 
@@ -100,7 +100,7 @@ def evaluate_model(model: Model, problem: InitialValueProblem) -> None:
 
 def main():
     config = Config()
-    problem = MassSpringDamper(config.m, config.c, config.k, config.x0, config.dx0, config.t0, config.t1)
+    problem = MassSpringDamper(config.m, config.d, config.k, config.x0, config.dx0, config.t0, config.t1)
 
     key = jax.random.PRNGKey(config.seed)
     model = train_model(config, problem, key)
