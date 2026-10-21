@@ -49,7 +49,7 @@ class InitialBoundaryValueProblem(ABC):
         return x, u
 
     @abstractmethod
-    def diffeq(
+    def residual(
         self,
         model: Callable[[Float[Array, " input_dim"]], Float[Array, " output_dim"]],
         position: Float[Array, " input_dim"],
@@ -103,16 +103,16 @@ class Heat1D(InitialBoundaryValueProblem):
         u = self.get_true(tx)
         return tx, u
 
-    def diffeq(
+    def residual(
         self,
         model: Callable[[Float[Array, " input_dim"]], Float[Array, " output_dim"]],
         position: Float[Array, " input_dim"],
     ) -> Float[Array, ""]:
-        def u(position):
+        def state(position):
             return model(position)[0]
 
-        u_grad = jax.grad(u)(position)
-        u_hessian = jax.hessian(u)(position)
+        u_grad = jax.grad(state)(position)
+        u_hessian = jax.hessian(state)(position)
 
         u_t = u_grad[0]
         u_xx = u_hessian[1, 1]
@@ -139,7 +139,7 @@ class InitialValueProblem(ABC):
         return t, x
 
     @abstractmethod
-    def diffeq(
+    def residual(
         self,
         model: Callable[[Float[Array, "1"]], Float[Array, " output_dim"]],
         t: Float[Array, " input_dim"],
@@ -178,7 +178,7 @@ class MassSpringDamper(InitialValueProblem):
         self.t0 = t0
         self.t1 = t1
 
-    def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch output_dim"]:
+    def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch 1"]:
         alpha = self.d / (2.0 * self.m)
         omega_squared = self.k / self.m
         Delta = alpha * alpha - omega_squared
@@ -199,15 +199,69 @@ class MassSpringDamper(InitialValueProblem):
 
         return jnp.exp(-alpha * tau) * (self.x0 * C + (self.dx0 + alpha * self.x0) * S)
 
-    def diffeq(
+    def residual(
         self,
         model: Callable[[Float[Array, "1"]], Float[Array, " output_dim"]],
         t: Float[Array, " input_dim"],
     ) -> Float[Array, " output_dim"]:
-        def x(t):
+        def state(t):
             return model(t)[0]
 
-        dx = jax.grad(x)(t)[0]
-        ddx = jax.hessian(x)(t)[0, 0]
+        x = state(t)[0]
+        dx = jax.grad(state)(t)[0]
+        ddx = jax.hessian(state)(t)[0, 0]
 
-        return self.m * ddx + self.d * dx + self.k * x(t)
+        return self.m * ddx + self.d * dx + self.k * x
+
+
+class Lorenz(InitialValueProblem):
+    rho: float
+    sigma: float
+    beta: float
+
+    x0: Float[Array, "3"]
+    t0: float
+    t1: float
+
+    def __init__(
+        self,
+        rho: float,
+        sigma: float,
+        beta: float,
+        x0: Float[Array, "3"],
+        t0: float,
+        t1: float,
+    ):
+        domain_boundary = jnp.array([[t0, t1]])
+        super().__init__(domain_boundary)
+        self.rho = rho
+        self.sigma = sigma
+        self.beta = beta
+
+        self.x0 = x0
+        self.t0 = t0
+        self.t1 = t1
+
+    def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch output_dim"]:
+        return jnp.concatenate([t, t, t], axis=1)
+
+    def residual(
+        self,
+        model: Callable[[Float[Array, "1"]], Float[Array, " output_dim"]],
+        t: Float[Array, " input_dim"],
+    ) -> Float[Array, " output_dim"]:
+        x = model(t)
+        x1 = x[0]
+        x2 = x[1]
+        x3 = x[2]
+
+        dx = jax.jacfwd(model)(t)[:, 0]
+        dx1 = dx[0]
+        dx2 = dx[1]
+        dx3 = dx[2]
+
+        residual1 = dx1 - (self.sigma * (x2 - x1))
+        residual2 = dx2 - (x1 * (self.rho - x3) - x2)
+        residual3 = dx3 - (x1 * x2 - self.beta * x3)
+        return jnp.array([residual1, residual2, residual3])
+

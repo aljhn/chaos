@@ -22,14 +22,14 @@ class Config:
     hidden_size: int = 32
     num_hidden_layers: int = 4
 
-    m = 1.0
-    d = 5.0
-    k = 500.0
+    m: float = 1.0
+    d: float = 5.0
+    k: float = 500.0
 
-    x0 = 1.0
-    dx0 = 0.0
-    t0 = 0.0
-    t1 = 1.0
+    x0: float = 1.0
+    dx0: float = 0.0
+    t0: float = 0.0
+    t1: float = 1.0
 
     n_validation: int = 100
     n_collocation: int = 100
@@ -49,14 +49,14 @@ def train_model(config: Config, problem: InitialValueProblem, key: PRNGKeyArray)
     x_i = jnp.array([[config.x0]])
 
     key, subkey = jax.random.split(key, 2)
-    tx_val, u_val = problem.sample_validation(subkey, config.n_validation)
+    t_val, x_val = problem.sample_validation(subkey, config.n_validation)
 
     trainloader = TrainLoader(t_i, x_i, config.batch_size)
-    validationloader = ValidationLoader(tx_val, u_val, config.batch_size)
+    validationloader = ValidationLoader(t_val, x_val, config.batch_size)
     collocation_sampler = UniformCollocationSampler(config.n_collocation, problem.domain_boundary)
 
     def physics_residual(model, positions):
-        return jax.vmap(problem.diffeq, in_axes=(None, 0))(model, positions)
+        return jax.vmap(problem.residual, in_axes=(None, 0))(model, positions)
 
     optimizer = optax.adamw(config.learning_rate)
 

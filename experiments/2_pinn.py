@@ -55,7 +55,7 @@ def train_model(config: Config, problem: InitialBoundaryValueProblem, key: PRNGK
     collocation_sampler = UniformCollocationSampler(config.n_collocation, problem.domain_boundary)
 
     def physics_residual(model, positions):
-        return jax.vmap(problem.diffeq, in_axes=(None, 0))(model, positions)
+        return jax.vmap(problem.residual, in_axes=(None, 0))(model, positions)
 
     optimizer = optax.adamw(config.learning_rate)
 
