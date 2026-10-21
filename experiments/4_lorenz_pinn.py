@@ -2,9 +2,8 @@ from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import optax
-from jaxtyping import Array, Float, PRNGKeyArray
+from jaxtyping import PRNGKeyArray
 
 from chaos_pinns.collocation import UniformCollocationSampler
 from chaos_pinns.dataloading import TrainLoader, ValidationLoader
@@ -22,8 +21,8 @@ class Config:
     hidden_size: int = 32
     num_hidden_layers: int = 4
 
-    rho: float = 28.0
     sigma: float = 10.0
+    rho: float = 28.0
     beta: float = 8.0 / 3.0
 
     x0_1: float = 1.0
@@ -101,7 +100,7 @@ def evaluate_model(model: Model, problem: InitialValueProblem) -> None:
 
 def main():
     config = Config()
-    x0 = jnp.array([[config.x0_1, config.x0_2, config.x0_3]])
+    x0 = jnp.array([config.x0_1, config.x0_2, config.x0_3])
     problem = Lorenz(config.rho, config.sigma, config.beta, x0, config.t0, config.t1)
 
     key = jax.random.PRNGKey(config.seed)

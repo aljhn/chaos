@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
+import diffrax as dfx
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray
@@ -201,9 +202,9 @@ class MassSpringDamper(InitialValueProblem):
 
     def residual(
         self,
-        model: Callable[[Float[Array, "1"]], Float[Array, " output_dim"]],
-        t: Float[Array, " input_dim"],
-    ) -> Float[Array, " output_dim"]:
+        model: Callable[[Float[Array, "1"]], Float[Array, "1"]],
+        t: Float[Array, "1"],
+    ) -> Float[Array, "1"]:
         def state(t):
             return model(t)[0]
 
@@ -215,18 +216,27 @@ class MassSpringDamper(InitialValueProblem):
 
 
 class Lorenz(InitialValueProblem):
-    rho: float
     sigma: float
+    rho: float
     beta: float
 
     x0: Float[Array, "3"]
     t0: float
     t1: float
 
+    @staticmethod
+    def vector_field(t, x, args):
+        x1, x2, x3 = x
+        sigma, rho, beta = args
+        dx1 = sigma * (x2 - x1)
+        dx2 = x1 * (rho - x3) - x2
+        dx3 = x1 * x2 - beta * x3
+        return jnp.array([dx1, dx2, dx3])
+
     def __init__(
         self,
-        rho: float,
         sigma: float,
+        rho: float,
         beta: float,
         x0: Float[Array, "3"],
         t0: float,
@@ -234,34 +244,44 @@ class Lorenz(InitialValueProblem):
     ):
         domain_boundary = jnp.array([[t0, t1]])
         super().__init__(domain_boundary)
-        self.rho = rho
-        self.sigma = sigma
-        self.beta = beta
 
+        self.sigma = sigma
+        self.rho = rho
+        self.beta = beta
         self.x0 = x0
         self.t0 = t0
         self.t1 = t1
 
-    def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch output_dim"]:
-        return jnp.concatenate([t, t, t], axis=1)
+        dt0 = 0.01
+        args = (self.sigma, self.rho, self.beta)
+
+        solution = dfx.diffeqsolve(
+            dfx.ODETerm(Lorenz.vector_field),
+            dfx.Tsit5(),
+            t0=self.t0,
+            t1=self.t1,
+            dt0=dt0,
+            y0=self.x0,
+            saveat=dfx.SaveAt(dense=True),
+            stepsize_controller=dfx.PIDController(rtol=1e-8, atol=1e-10),
+            max_steps=1_000_000,
+            args=args
+        )
+        self.solution = solution
+
+    def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch 3"]:
+        return jax.vmap(self.solution.evaluate)(t[:, 0])
 
     def residual(
         self,
-        model: Callable[[Float[Array, "1"]], Float[Array, " output_dim"]],
-        t: Float[Array, " input_dim"],
-    ) -> Float[Array, " output_dim"]:
+        model: Callable[[Float[Array, "1"]], Float[Array, "3"]],
+        t: Float[Array, "1"]
+    ) -> Float[Array, "3"]:
         x = model(t)
-        x1 = x[0]
-        x2 = x[1]
-        x3 = x[2]
-
         dx = jax.jacfwd(model)(t)[:, 0]
-        dx1 = dx[0]
-        dx2 = dx[1]
-        dx3 = dx[2]
 
-        residual1 = dx1 - (self.sigma * (x2 - x1))
-        residual2 = dx2 - (x1 * (self.rho - x3) - x2)
-        residual3 = dx3 - (x1 * x2 - self.beta * x3)
-        return jnp.array([residual1, residual2, residual3])
+        args = (self.sigma, self.rho, self.beta)
+        f = Lorenz.vector_field(None, x, args)
 
+        residual = dx - f 
+        return residual
