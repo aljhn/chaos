@@ -121,10 +121,12 @@ class Heat1D(InitialBoundaryValueProblem):
 
 
 class InitialValueProblem(ABC):
-    domain_boundary: Float[Array, "2"]
+    t0: float
+    t1: float
 
-    def __init__(self, domain_boundary: Float[Array, "2"]):
-        self.domain_boundary = domain_boundary
+    def __init__(self, t0: float, t1: float):
+        self.t0 = t0
+        self.t1 = t1
 
     @abstractmethod
     def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch output_dim"]:
@@ -133,9 +135,7 @@ class InitialValueProblem(ABC):
     def sample_validation(
         self, key: PRNGKeyArray, n: int
     ) -> tuple[Float[Array, "batch 1"], Float[Array, "batch output_dim"]]:
-        domain_boundary_min = self.domain_boundary[0, 0]
-        domain_boundary_max = self.domain_boundary[0, 1]
-        t = jax.random.uniform(key, shape=(n, 1), minval=domain_boundary_min, maxval=domain_boundary_max)
+        t = jax.random.uniform(key, shape=(n, 1), minval=self.t0, maxval=self.t1)
         x = self.get_true(t)
         return t, x
 
@@ -155,8 +155,6 @@ class MassSpringDamper(InitialValueProblem):
 
     x0: float
     dx0: float
-    t0: float
-    t1: float
 
     def __init__(
         self,
@@ -168,35 +166,37 @@ class MassSpringDamper(InitialValueProblem):
         t0: float,
         t1: float,
     ):
-        domain_boundary = jnp.array([[t0, t1]])
-        super().__init__(domain_boundary)
+        super().__init__(t0, t1)
         self.m = m
         self.d = d
         self.k = k
 
         self.x0 = x0
         self.dx0 = dx0
-        self.t0 = t0
-        self.t1 = t1
 
     def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch 1"]:
         alpha = self.d / (2.0 * self.m)
         omega_squared = self.k / self.m
-        Delta = alpha * alpha - omega_squared
+        delta = alpha * alpha - omega_squared
 
         tau = t - self.t0
 
         C = 1.0
         S = tau
 
-        if Delta < 0:
-            sqrt_minus_Delta = jnp.sqrt(-Delta)
-            C = jnp.cos(sqrt_minus_Delta * tau)
-            S = jnp.sin(sqrt_minus_Delta * tau) / sqrt_minus_Delta
-        elif Delta > 0:
-            sqrt_Delta = jnp.sqrt(Delta)
-            C = jnp.cosh(sqrt_Delta * tau)
-            S = jnp.sinh(sqrt_Delta * tau) / sqrt_Delta
+        eps = 1e-8
+        if delta > -eps and delta < eps:
+            delta_tau_tau = delta * tau * tau
+            C = 1.0 + delta_tau_tau / 2.0 + delta_tau_tau * delta_tau_tau / 24.0
+            S = tau * (1.0 + delta_tau_tau / 6.0 + delta_tau_tau * delta_tau_tau / 120.0)
+        elif delta < 0.0:
+            sqrt_minus_delta = jnp.sqrt(-delta)
+            C = jnp.cos(sqrt_minus_delta * tau)
+            S = jnp.sin(sqrt_minus_delta * tau) / sqrt_minus_delta
+        elif delta > 0.0:
+            sqrt_delta = jnp.sqrt(delta)
+            C = jnp.cosh(sqrt_delta * tau)
+            S = jnp.sinh(sqrt_delta * tau) / sqrt_delta
 
         return jnp.exp(-alpha * tau) * (self.x0 * C + (self.dx0 + alpha * self.x0) * S)
 
@@ -205,12 +205,13 @@ class MassSpringDamper(InitialValueProblem):
         model: Callable[[Float[Array, "1"]], Float[Array, "1"]],
         t: Float[Array, "1"],
     ) -> Float[Array, "1"]:
-        def state(t):
-            return model(t)[0]
+        def state(t: Float[Array, ""]) -> Float[Array, ""]:
+            return model(t[None])[0]
 
-        x = state(t)[0]
-        dx = jax.grad(state)(t)[0]
-        ddx = jax.hessian(state)(t)[0, 0]
+        tt = t[0]
+        x = state(tt)
+        dx = jax.grad(state)(tt)
+        ddx = jax.grad(jax.grad(state))(tt)
 
         return self.m * ddx + self.d * dx + self.k * x
 
@@ -221,17 +222,6 @@ class Lorenz(InitialValueProblem):
     beta: float
 
     x0: Float[Array, "3"]
-    t0: float
-    t1: float
-
-    @staticmethod
-    def vector_field(t, x, args):
-        x1, x2, x3 = x
-        sigma, rho, beta = args
-        dx1 = sigma * (x2 - x1)
-        dx2 = x1 * (rho - x3) - x2
-        dx3 = x1 * x2 - beta * x3
-        return jnp.array([dx1, dx2, dx3])
 
     def __init__(
         self,
@@ -242,21 +232,17 @@ class Lorenz(InitialValueProblem):
         t0: float,
         t1: float,
     ):
-        domain_boundary = jnp.array([[t0, t1]])
-        super().__init__(domain_boundary)
+        super().__init__(t0, t1)
 
         self.sigma = sigma
         self.rho = rho
         self.beta = beta
         self.x0 = x0
-        self.t0 = t0
-        self.t1 = t1
 
         dt0 = 0.01
-        args = (self.sigma, self.rho, self.beta)
 
         solution = dfx.diffeqsolve(
-            dfx.ODETerm(Lorenz.vector_field),
+            dfx.ODETerm(self.vector_field),
             dfx.Tsit5(),
             t0=self.t0,
             t1=self.t1,
@@ -265,9 +251,15 @@ class Lorenz(InitialValueProblem):
             saveat=dfx.SaveAt(dense=True),
             stepsize_controller=dfx.PIDController(rtol=1e-8, atol=1e-10),
             max_steps=1_000_000,
-            args=args
         )
         self.solution = solution
+
+    def vector_field(self, t, x, args):
+        x1, x2, x3 = x
+        dx1 = self.sigma * (x2 - x1)
+        dx2 = x1 * (self.rho - x3) - x2
+        dx3 = x1 * x2 - self.beta * x3
+        return jnp.array([dx1, dx2, dx3])
 
     def get_true(self, t: Float[Array, "batch 1"]) -> Float[Array, "batch 3"]:
         return jax.vmap(self.solution.evaluate)(t[:, 0])
@@ -280,8 +272,7 @@ class Lorenz(InitialValueProblem):
         x = model(t)
         dx = jax.jacfwd(model)(t)[:, 0]
 
-        args = (self.sigma, self.rho, self.beta)
-        f = Lorenz.vector_field(None, x, args)
+        f = self.vector_field(None, x, None)
 
         residual = dx - f 
         return residual

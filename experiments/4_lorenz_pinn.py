@@ -53,7 +53,9 @@ def train_model(config: Config, problem: InitialValueProblem, key: PRNGKeyArray)
 
     trainloader = TrainLoader(t_i, x_i, config.batch_size)
     validationloader = ValidationLoader(t_val, x_val, config.batch_size)
-    collocation_sampler = UniformCollocationSampler(config.n_collocation, problem.domain_boundary)
+
+    domain_boundary = jnp.array([[problem.t0, problem.t1]])
+    collocation_sampler = UniformCollocationSampler(config.n_collocation, domain_boundary)
 
     def physics_residual(model, positions):
         return jax.vmap(problem.residual, in_axes=(None, 0))(model, positions)
