@@ -8,7 +8,7 @@ from jaxtyping import PRNGKeyArray
 from chaos_pinns.collocation import UniformCollocationSampler
 from chaos_pinns.dataloading import TrainLoader, ValidationLoader
 from chaos_pinns.models import MLP
-from chaos_pinns.problems import InitialValueProblem, Lorenz
+from chaos_pinns.odes import InitialValueProblem, Lorenz
 from chaos_pinns.training import Model, train_pinn
 
 
@@ -80,8 +80,8 @@ def train_model(config: Config, problem: InitialValueProblem, key: PRNGKeyArray)
 
 
 def evaluate_model(model: Model, problem: InitialValueProblem) -> None:
-    t0 = problem.domain_boundary[0, 0]
-    t1 = problem.domain_boundary[0, 1]
+    t0 = problem.t0
+    t1 = problem.t1
 
     n = 1000
     t = jnp.linspace(t0, t1, n)[:, None]
@@ -103,7 +103,7 @@ def evaluate_model(model: Model, problem: InitialValueProblem) -> None:
 def main():
     config = Config()
     x0 = jnp.array([config.x0_1, config.x0_2, config.x0_3])
-    problem = Lorenz(config.rho, config.sigma, config.beta, x0, config.t0, config.t1)
+    problem = Lorenz(x0, config.t0, config.t1, config.rho, config.sigma, config.beta)
 
     key = jax.random.PRNGKey(config.seed)
     model = train_model(config, problem, key)
