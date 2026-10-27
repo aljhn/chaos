@@ -140,7 +140,7 @@ def train_model(
     problem: InitialValueProblem,
     data: tuple[Float[Array, "batch 1"], Float[Array, "batch 2"]],
     key: PRNGKeyArray,
-) -> Model:
+) -> tuple[Model, Float[Array, " epochs"], Float[Array, " epochs"]]:
     key, subkey = jax.random.split(key, 2)
     model = MLP(config.input_size, config.output_size, config.hidden_size, config.num_hidden_layers, subkey)
 
@@ -160,7 +160,7 @@ def train_model(
     optimizer = optax.adamw(config.learning_rate)
 
     key, subkey = jax.random.split(key, 2)
-    model = train_pinn(
+    model, train_losses, validation_losses = train_pinn(
         model,
         optimizer,
         config.epochs,
@@ -173,7 +173,7 @@ def train_model(
         config.physics_weight,
     )
 
-    return model
+    return model, train_losses, validation_losses
 
 
 def evaluate_model(
@@ -200,6 +200,19 @@ def evaluate_model(
     plt.scatter(t_data, x_data)
     plt.xlabel(r"$t$")
     plt.ylabel(r"$x$")
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_losses(train_losses: Float[Array, " epochs"], validation_losses: Float[Array, " epochs"]):
+    n_epochs = train_losses.shape[0]
+    epochs = jnp.arange(1, n_epochs + 1, 1)
+
+    plt.figure()
+    plt.plot(epochs, train_losses)
+    plt.plot(epochs, validation_losses)
+    plt.xlabel(r"Epoch")
+    plt.ylabel(r"Loss")
     plt.tight_layout()
     plt.show()
 
@@ -233,9 +246,11 @@ def main():
     problem = MassSpringDamper1D(config.m, config.d, config.k, config.x0, config.dx0, config.t0, config.t1)
 
     key = jax.random.PRNGKey(config.seed)
-    model = train_model(config, problem, data, key)
+    model, train_losses, validation_losses = train_model(config, problem, data, key)
 
     evaluate_model(model, problem, data)
+
+    plot_losses(train_losses, validation_losses)
 
 
 if __name__ == "__main__":

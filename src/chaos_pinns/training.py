@@ -115,8 +115,11 @@ def train_pinn(
     collocation_sampler: CollocationSampler,
     physics_residual: Callable[[Model, Float[Array, "size dim"]], Float[Array, " size"]],
     physics_weight: float,
-) -> Model:
+) -> tuple[Model, Float[Array, " epochs"], Float[Array, " epochs"]]:
     opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
+
+    train_losses = []
+    validation_losses = []
 
     @eqx.filter_jit
     def train_step(
@@ -149,9 +152,12 @@ def train_pinn(
             samples_train += batch_size
 
         loss_train /= samples_train
+        loss_validation = evaluate(model, validationloader)
+
+        train_losses.append(loss_train)
+        validation_losses.append(loss_validation)
 
         if epoch % print_every == 0:
-            loss_validation = evaluate(model, validationloader)
             print(f"epoch={epoch:4d}, loss_train={loss_train.item():.4f}, loss_validation={loss_validation.item():.4f}")
 
-    return model
+    return model, jnp.stack(train_losses), jnp.stack(validation_losses)
