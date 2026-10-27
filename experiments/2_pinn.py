@@ -9,7 +9,7 @@ from jaxtyping import PRNGKeyArray
 from chaos_pinns.collocation import UniformCollocationSampler
 from chaos_pinns.dataloading import TrainLoader, ValidationLoader
 from chaos_pinns.models import MLP
-from chaos_pinns.problems import Heat1D, InitialBoundaryValueProblem
+from chaos_pinns.pdes import Heat1D, InitialBoundaryValueProblem
 from chaos_pinns.training import Model, train_pinn
 
 

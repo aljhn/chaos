@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-import diffrax as dfx
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float, PRNGKeyArray

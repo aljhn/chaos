@@ -99,7 +99,7 @@ def train(
 
         if epoch % print_every == 0:
             loss_validation = evaluate(model, validationloader)
-            print(f"epoch={epoch:4d}, loss_train={loss_train.item():.4f}, loss_validation={loss_validation.item():.4f}")
+            print(f"epoch={epoch:6d}, loss_train={loss_train.item():.5f}, loss_validation={loss_validation.item():.5f}")
 
     return model
 

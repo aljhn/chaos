@@ -9,7 +9,7 @@ from jaxtyping import PRNGKeyArray
 from chaos_pinns.collocation import UniformCollocationSampler
 from chaos_pinns.dataloading import TrainLoader, ValidationLoader
 from chaos_pinns.models import MLP
-from chaos_pinns.problems import InitialValueProblem, MassSpringDamper
+from chaos_pinns.odes import InitialValueProblem, MassSpringDamper1D
 from chaos_pinns.training import Model, train_pinn
 
 
@@ -102,7 +102,7 @@ def evaluate_model(model: Model, problem: InitialValueProblem) -> None:
 
 def main():
     config = Config()
-    problem = MassSpringDamper(config.m, config.d, config.k, config.x0, config.dx0, config.t0, config.t1)
+    problem = MassSpringDamper1D(config.m, config.d, config.k, config.x0, config.dx0, config.t0, config.t1)
 
     key = jax.random.PRNGKey(config.seed)
     model = train_model(config, problem, key)

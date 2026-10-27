@@ -24,13 +24,13 @@ def main():
     x0 = jnp.array([1.0, 0.0])
     Q0 = jnp.eye(dims)
 
-    msd = MassSpringDamper(x0, T0, T1, m, d, k)
+    system = MassSpringDamper(x0, T0, T1, m, d, k)
 
     def combined_dynamics(t, y, args):
         x = y[:dims]
         Q = y[dims:].reshape(dims, dims)
-        dx = msd.vector_field(t, x)
-        dQ = msd.tangent_vector_field(t, x, Q)
+        dx = system.vector_field(t, x)
+        dQ = system.tangent_vector_field(t, x, Q)
         return jnp.concatenate((dx, dQ.flatten()))
 
     term = dfx.ODETerm(combined_dynamics)
