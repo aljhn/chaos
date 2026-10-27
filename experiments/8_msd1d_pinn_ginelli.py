@@ -40,8 +40,8 @@ class Config:
     batch_size: int = 32
 
     learning_rate: float = 1e-3
-    epochs: int = 10000
-    print_every: int = 1000
+    epochs: int = 20000
+    print_every: int = 500
     physics_weight: float = 1e-4
 
 
@@ -176,8 +176,18 @@ def train_model(
     return model, train_losses, validation_losses
 
 
-def evaluate_model(
-    model: Model,
+def train_model_clv(
+    config: Config,
+    problem: InitialValueProblem,
+    data: tuple[Float[Array, "batch 1"], Float[Array, "batch 2"]],
+    key: PRNGKeyArray,
+) -> tuple[Model, Float[Array, " epochs"], Float[Array, " epochs"]]:
+    return train_model(config, problem, data, key)
+
+
+def evaluate_models(
+    model1: Model,
+    model2: Model,
     problem: InitialValueProblem,
     data: tuple[Float[Array, "batch 1"], Float[Array, "batch 2"]],
 ) -> None:
@@ -186,17 +196,20 @@ def evaluate_model(
 
     n = 1000
     t = jnp.linspace(t0, t1, n)[:, None]
-    x = jax.vmap(model)(t)
+    x1 = jax.vmap(model1)(t)
+    x2 = jax.vmap(model2)(t)
 
     x_true = problem.get_true(t)
 
-    print("MSE:", jnp.mean((x - x_true) ** 2))
+    print("MSE 1:", jnp.mean((x1 - x_true) ** 2))
+    print("MSE 2:", jnp.mean((x2 - x_true) ** 2))
 
     t_data, x_data = data
 
     plt.figure()
     plt.plot(t, x_true[:, 0])
-    plt.plot(t, x[:, 0])
+    plt.plot(t, x1[:, 0])
+    plt.plot(t, x2[:, 0])
     plt.scatter(t_data, x_data)
     plt.xlabel(r"$t$")
     plt.ylabel(r"$x$")
@@ -204,15 +217,19 @@ def evaluate_model(
     plt.show()
 
 
-def plot_losses(train_losses: Float[Array, " epochs"], validation_losses: Float[Array, " epochs"]):
-    n_epochs = train_losses.shape[0]
-    epochs = jnp.arange(1, n_epochs + 1, 1)
+def plot_losses(loss_1: Float[Array, " epochs"], loss_2: Float[Array, " epochs"]):
+    n_epochs_1 = loss_1.shape[0]
+    epochs_1 = jnp.arange(1, n_epochs_1 + 1, 1)
+
+    n_epochs_2 = loss_2.shape[0]
+    epochs_2 = jnp.arange(1, n_epochs_2 + 1, 1)
 
     plt.figure()
-    plt.plot(epochs, train_losses)
-    plt.plot(epochs, validation_losses)
+    plt.plot(epochs_1, loss_1)
+    plt.plot(epochs_2, loss_2)
     plt.xlabel(r"Epoch")
     plt.ylabel(r"Loss")
+    plt.yscale("log")
     plt.tight_layout()
     plt.show()
 
@@ -248,9 +265,11 @@ def main():
     key = jax.random.PRNGKey(config.seed)
     model, train_losses, validation_losses = train_model(config, problem, data, key)
 
-    evaluate_model(model, problem, data)
+    model_clv, train_losses_clv, validation_losses_clv = train_model_clv(config, problem, data, key)
 
-    plot_losses(train_losses, validation_losses)
+    evaluate_models(model, model_clv, problem, data)
+    plot_losses(train_losses, train_losses_clv)
+    plot_losses(validation_losses, validation_losses_clv)
 
 
 if __name__ == "__main__":
