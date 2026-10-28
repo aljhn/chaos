@@ -9,7 +9,7 @@ from jaxtyping import Array, Float, PRNGKeyArray
 
 from chaos_pinns.collocation import UniformCollocationSampler
 from chaos_pinns.dataloading import TrainLoader, ValidationLoader
-from chaos_pinns.models import MLP
+from chaos_pinns.models import MLP, MLPWithNormalizedTime
 from chaos_pinns.odes import InitialValueProblem, MassSpringDamper
 from chaos_pinns.training import Model, train_pinn
 
@@ -23,29 +23,32 @@ class Config:
     hidden_size: int = 32
     num_hidden_layers: int = 4
 
-    m: float = 1.0
-    d: float = 5.0
-    k: float = 500.0
-
     dims: int = 2
 
-    x0_1: float = 1.0
-    x0_2: float = 0.0
+    m: float = 1.0
+    d: float = 0.4
+    k: float = 4.0
+
+    x0: float = 1.0
+    dx0: float = 0.0
     t0: float = 0.0
-    t1: float = 1.0
+    t1: float = 10.0
     dt: float = 1e-3
 
-    n_validation: int = 100
-    n_collocation: int = 100
+    n_validation: int = 128
+    n_collocation: int = 1024
     batch_size: int = 32
 
     learning_rate: float = 1e-3
-    epochs: int = 20000
-    print_every: int = 500
-    physics_weight: float = 1e-4
+    epochs: int = 30000
+    print_every: int = 200
+    physics_weight: float = 1e-1
 
 
 def get_lyapunov_stuff(config: Config, system: InitialValueProblem):
+    t1_original = config.t1
+    config.t1 *= 10.0
+
     iterations = int((config.t1 - config.t0) / config.dt) + 1
     t_all = jnp.linspace(config.t0, config.t1, iterations)
     t_intervals = (t_all[:-1], t_all[1:])
@@ -123,6 +126,12 @@ def get_lyapunov_stuff(config: Config, system: InitialValueProblem):
 
     V_all = Q_all @ C_all
 
+    config.t1 = t1_original
+    iterations = int((config.t1 - config.t0) / config.dt) + 1
+    t_all = t_all[:iterations]
+    x_all = x_all[:iterations]
+    V_all = V_all[:iterations]
+
     return t_all, x_all, V_all, lyapunov_exponents
 
 
@@ -131,9 +140,10 @@ def train_model(
     problem: InitialValueProblem,
     data: tuple[Float[Array, "batch 1"], Float[Array, "batch 2"]],
     key: PRNGKeyArray,
-) -> Model:
+) -> tuple[Model, list, list]:
     key, subkey = jax.random.split(key, 2)
     model = MLP(config.input_size, config.output_size, config.hidden_size, config.num_hidden_layers, subkey)
+    model = MLPWithNormalizedTime(model, problem.t0, problem.t1)
 
     key, subkey = jax.random.split(key, 2)
     t_val, x_val = problem.sample_validation(subkey, config.n_validation)
@@ -151,7 +161,7 @@ def train_model(
     optimizer = optax.adamw(config.learning_rate)
 
     key, subkey = jax.random.split(key, 2)
-    model = train_pinn(
+    model, train_losses, validation_losses = train_pinn(
         model,
         optimizer,
         config.epochs,
@@ -164,33 +174,63 @@ def train_model(
         config.physics_weight,
     )
 
-    return model
+    return model, train_losses, validation_losses
 
 
-def evaluate_model(
-    model: Model,
+def train_model_clv(
+    config: Config,
+    problem: InitialValueProblem,
+    data: tuple[Float[Array, "batch 1"], Float[Array, "batch 2"]],
+    key: PRNGKeyArray,
+) -> tuple[Model, list, list]:
+    return train_model(config, problem, data, key)
+
+
+def plot_models(
+    model1: Model,
+    model2: Model,
     problem: InitialValueProblem,
     data: tuple[Float[Array, "batch 1"], Float[Array, "batch 2"]],
 ) -> None:
     t0 = problem.t0
     t1 = problem.t1
 
-    n = 1000
+    n = 100
     t = jnp.linspace(t0, t1, n)[:, None]
-    x = jax.vmap(model)(t)
+    x1 = jax.vmap(model1)(t)
+    # x2 = jax.vmap(model2)(t)
 
     x_true = problem.get_true(t)
 
-    print("MSE:", jnp.mean((x - x_true) ** 2))
+    print("MSE 1:", jnp.mean((x1 - x_true) ** 2))
+    # print("MSE 2:", jnp.mean((x2 - x_true) ** 2))
 
     t_data, x_data = data
 
     plt.figure()
     plt.plot(t, x_true[:, 0])
-    plt.plot(t, x[:, 0])
-    plt.scatter(t_data[:, 0], x_data[:, 0])
+    plt.plot(t, x1[:, 0])
+    # plt.plot(t, x2[:, 0])
+    plt.scatter(t_data, x_data[:, 0])
     plt.xlabel(r"$t$")
     plt.ylabel(r"$x$")
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_losses(loss_1: list, loss_2: list):
+    n_epochs_1 = len(loss_1)
+    epochs_1 = jnp.arange(1, n_epochs_1 + 1, 1)
+
+    n_epochs_2 = len(loss_2)
+    epochs_2 = jnp.arange(1, n_epochs_2 + 1, 1)
+
+    plt.figure()
+    plt.plot(epochs_1, loss_1)
+    plt.plot(epochs_2, loss_2)
+    plt.xlabel(r"Epoch")
+    plt.ylabel(r"Loss")
+    plt.yscale("log")
     plt.tight_layout()
     plt.show()
 
@@ -198,7 +238,7 @@ def evaluate_model(
 def main():
     config = Config()
 
-    x0 = jnp.array([config.x0_1, config.x0_2])
+    x0 = jnp.array([config.x0, config.dx0])
     system = MassSpringDamper(x0, config.t0, config.t1, config.m, config.d, config.k)
 
     t_all, x_all, V_all, lyapunov_exponents = get_lyapunov_stuff(config, system)
@@ -216,9 +256,14 @@ def main():
     data = (t_data, x_data)
 
     key = jax.random.PRNGKey(config.seed)
-    model = train_model(config, system, data, key)
+    model, train_losses, validation_losses = train_model(config, system, data, key)
 
-    evaluate_model(model, system, data)
+    # model_clv, train_losses_clv, validation_losses_clv = train_model_clv(config, system, data, key)
+
+    model_clv = None
+    plot_models(model, model_clv, system, data)
+    # plot_losses(train_losses, train_losses_clv)
+    # plot_losses(validation_losses, validation_losses_clv)
 
 
 if __name__ == "__main__":

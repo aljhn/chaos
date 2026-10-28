@@ -31,3 +31,18 @@ class MLP(eqx.Module):
         for layer in self.layers:
             x = layer(x)
         return x
+
+
+class MLPWithNormalizedTime(eqx.Module):
+    network: MLP
+    t0: float = eqx.field(static=True)
+    duration: float = eqx.field(static=True)
+
+    def __init__(self, network: MLP, t0: float, t1: float):
+        self.network = network
+        self.t0 = t0
+        self.duration = t1 - t0
+
+    def __call__(self, t: Float[Array, "1"]) -> Float[Array, " dim"]:
+        tau = (t - self.t0) / self.duration
+        return self.network(tau)
