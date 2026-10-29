@@ -11,7 +11,7 @@ from jaxtyping import Array, Float, PRNGKeyArray
 
 from chaos_pinns.collocation import UniformCollocationSampler
 from chaos_pinns.dataloading import TrainLoader, ValidationLoader
-from chaos_pinns.models import MLP, MLPWithNormalizedTime
+from chaos_pinns.models import MLP
 from chaos_pinns.odes import InitialValueProblem, Lorenz
 from chaos_pinns.training import Model, train_pinn
 
@@ -22,8 +22,8 @@ class Config:
 
     input_size: int = 1
     output_size: int = 3
-    hidden_size: int = 64
-    num_hidden_layers: int = 5
+    hidden_size: int = 128
+    num_hidden_layers: int = 6
 
     dims: int = 3
 
@@ -42,13 +42,13 @@ class Config:
     data_dt: float = 1e-3
 
     n_validation: int = 128
-    n_collocation: int = 2048
+    n_collocation: int = 4096
     batch_size: int = 32
 
     learning_rate: float = 1e-3
-    epochs: int = 20000
+    epochs: int = 40000
     print_every: int = 500
-    physics_weight: float = 1e-4
+    physics_weight: float = 1e-2
 
 
 def get_lyapunov_stuff(config: Config, system: InitialValueProblem):
@@ -217,7 +217,6 @@ def train_model_clv(
         config.num_hidden_layers,
         subkey,
     )
-    model = MLPWithNormalizedTime(model, problem.t0, problem.t1)
 
     # Validation data.
     key, subkey = jax.random.split(key)
@@ -261,9 +260,18 @@ def train_model_clv(
             "The CLV-coordinate residual may be numerically unreliable."
         )
 
-    # Mean-one weights: beta=0 gives uniform weights.
-    weights = dims * jax.nn.softmax(clv_beta * lyapunov_exponents)
+    # Start with weak CLV weighting.
+    raw_weights = jnp.exp(clv_beta * lyapunov_exponents)
+
+    # Bound the relative importance of each direction.
+    raw_weights = jnp.clip(raw_weights, 0.5, 2.0)
+
+    # Normalize to mean one.
+    weights = dims * raw_weights / jnp.sum(raw_weights)
     sqrt_weights = jnp.sqrt(weights)
+
+    print("Lyapunov exponents:", lyapunov_exponents)
+    print("CLV weights:", weights)
 
     # Flatten the matrices so each component can be interpolated in time.
     V_flat = V_clv.reshape(V_clv.shape[0], dims * dims)
@@ -325,15 +333,15 @@ def plot_models(
     t_train, x_train = data_train
 
     x1 = jax.vmap(model1)(t_eval)
-    # x2 = jax.vmap(model2)(t_eval)
+    x2 = jax.vmap(model2)(t_eval)
 
     print("MSE 1:", jnp.mean((x1 - x_eval) ** 2))
-    # print("MSE 2:", jnp.mean((x2 - x_eval) ** 2))
+    print("MSE 2:", jnp.mean((x2 - x_eval) ** 2))
 
     plt.figure()
     plt.plot(t_eval, x_eval[:, 0])
     plt.plot(t_eval, x1[:, 0])
-    # plt.plot(t, x2[:, 0])
+    plt.plot(t_eval, x2[:, 0])
     plt.scatter(t_train, x_train[:, 0])
     plt.xlabel(r"$t$")
     plt.ylabel(r"$x$")
@@ -393,10 +401,10 @@ def main():
     key = jax.random.PRNGKey(config.seed)
     model, train_losses, validation_losses = train_model(config, system, data_train, key)
 
-    # model_clv, train_losses_clv, validation_losses_clv = train_model_clv(
-    #     config, system, data, key, t_all, V_all, lyapunov_exponents, clv_beta=1.0
-    # )
-    model_clv = None
+    config.physics_weight = 1e-4
+    model_clv, train_losses_clv, validation_losses_clv = train_model_clv(
+        config, system, data_train, key, t_all, V_all, lyapunov_exponents, clv_beta=0.05
+    )
 
     index_stop = int(n_all * config.t1 / config.data_t1) + 1
     index_step = 10
@@ -406,7 +414,7 @@ def main():
 
     plot_models(model, model_clv, system, data_eval, data_train)
     # plot_losses(train_losses, train_losses_clv)
-    # plot_losses(validation_losses, validation_losses_clv)
+    plot_losses(validation_losses, validation_losses_clv)
 
 
 if __name__ == "__main__":

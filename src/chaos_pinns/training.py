@@ -174,7 +174,7 @@ def train_pinn(
     collocation_sampler: CollocationSampler,
     physics_residual,
     physics_weight: float,
-    lbfgs_steps: int = 500,
+    lbfgs_steps: int = 1000,
 ) -> tuple[Model, list, list]:
     opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
 
