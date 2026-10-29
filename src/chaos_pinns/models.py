@@ -33,16 +33,25 @@ class MLP(eqx.Module):
         return x
 
 
-class MLPWithNormalizedTime(eqx.Module):
+class MLPWithNormalizedTime:
     network: MLP
     t0: float = eqx.field(static=True)
-    duration: float = eqx.field(static=True)
+    t1: float = eqx.field(static=True)
 
-    def __init__(self, network: MLP, t0: float, t1: float):
+    def __init__(
+        self,
+        network: MLP,
+        t0: float,
+        t1: float,
+    ):
         self.network = network
         self.t0 = t0
-        self.duration = t1 - t0
+        self.t1 = t1
 
-    def __call__(self, t: Float[Array, "1"]) -> Float[Array, " dim"]:
-        tau = (t - self.t0) / self.duration
-        return self.network(tau)
+    def normalize_time(self, t: Float[Array, "1"]) -> Float[Array, "1"]:
+        return 2.0 * (t - self.t0) / (self.t1 - self.t0) - 1.0
+
+    def __call__(self, t: Float[Array, "1"]) -> Float[Array, " dims"]:
+        tau = self.normalize_time(t)
+        z = self.network(tau)
+        return z
