@@ -42,12 +42,13 @@ class Config:
     data_dt: float = 1e-3
 
     n_validation: int = 128
-    n_collocation: int = 4096
+    n_collocation: int = 1024
     batch_size: int = 32
 
     learning_rate: float = 1e-3
-    epochs: int = 40000
-    print_every: int = 500
+    epochs: int = 60000
+    print_every: int = 1000
+    lbfgs_epochs: int = 2000
     physics_weight: float = 1e-2
 
 
@@ -135,7 +136,7 @@ def get_lyapunov_stuff(config: Config, system: InitialValueProblem):
     x_all = x_all[:iterations]
     V_all = V_all[:iterations]
 
-    return t_all, x_all, V_all, lyapunov_exponents
+    return t_all, x_all, Q_all, V_all, lyapunov_exponents
 
 
 def train_model(
@@ -175,6 +176,7 @@ def train_model(
         collocation_sampler,
         physics_residual,
         config.physics_weight,
+        config.lbfgs_epochs,
     )
 
     return model, train_losses, validation_losses
@@ -317,6 +319,7 @@ def train_model_clv(
         collocation_sampler,
         physics_residual,
         config.physics_weight,
+        config.lbfgs_epochs,
     )
 
     return model, train_losses, validation_losses
@@ -378,14 +381,16 @@ def main():
         with np.load(path) as data:
             t_all = data["t_all"]
             x_all = data["x_all"]
+            Q_all = data["Q_all"]
             V_all = data["V_all"]
             lyapunov_exponents = data["lyapunov_exponents"]
     else:
-        t_all, x_all, V_all, lyapunov_exponents = get_lyapunov_stuff(config, system)
+        t_all, x_all, Q_all, V_all, lyapunov_exponents = get_lyapunov_stuff(config, system)
         np.savez_compressed(
             filename,
             t_all=np.asarray(t_all),
             x_all=np.asarray(x_all),
+            Q_all=np.asarray(Q_all),
             V_all=np.asarray(V_all),
             lyapunov_exponents=np.asarray(lyapunov_exponents),
         )
@@ -399,11 +404,14 @@ def main():
     data_train = (t_train, x_train)
 
     key = jax.random.PRNGKey(config.seed)
+    # config.epochs = 1000
     model, train_losses, validation_losses = train_model(config, system, data_train, key)
 
-    config.physics_weight = 1e-4
+    # config.learning_rate = 1e-3
+    # config.physics_weight = 1e-3
+    # config.epochs = 40000
     model_clv, train_losses_clv, validation_losses_clv = train_model_clv(
-        config, system, data_train, key, t_all, V_all, lyapunov_exponents, clv_beta=0.05
+        config, system, data_train, key, t_all, Q_all, lyapunov_exponents, clv_beta=0.05
     )
 
     index_stop = int(n_all * config.t1 / config.data_t1) + 1
