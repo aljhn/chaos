@@ -1,3 +1,4 @@
+import colorsys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,7 +49,7 @@ class Config:
     learning_rate: float = 1e-3
     epochs: int = 60000
     print_every: int = 1000
-    lbfgs_epochs: int = 2000
+    lbfgs_epochs: int = 0
     physics_weight: float = 1e-2
 
 
@@ -325,12 +326,85 @@ def train_model_clv(
     return model, train_losses, validation_losses
 
 
+def hsl(h, s, l):
+    r, g, b = colorsys.hls_to_rgb(h / 360, l / 100, s / 100)
+    return r, g, b
+
+
+def setup_plotting():
+    background = hsl(200, 20, 95)
+    text = hsl(40, 10, 10)
+    secondary = hsl(40, 10, 50)
+
+    plt.rcParams.update(
+        {
+            "font.family": "serif",
+            "font.serif": ["STIX Two Text"],
+            "mathtext.fontset": "stix",
+            "font.size": 12,
+            "axes.titlesize": 14,
+            "axes.labelsize": 12,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "legend.fontsize": 12,
+            "axes.grid": True,
+            "axes.axisbelow": True,
+            "axes.linewidth": 1.0,
+            "grid.linewidth": 0.5,
+            "grid.color": secondary,
+            "figure.dpi": 150,
+            "savefig.dpi": 300,
+            "savefig.bbox": "tight",
+            "figure.facecolor": background,
+            "axes.facecolor": background,
+            "axes.edgecolor": text,
+            "axes.labelcolor": text,
+            "text.color": text,
+            "xtick.color": text,
+            "ytick.color": text,
+            "legend.facecolor": background,
+            "legend.edgecolor": text,
+            "legend.labelcolor": text,
+        }
+    )
+
+
+# def plot_models(
+#     model1: Model,
+#     model2: Model,
+#     problem: InitialValueProblem,
+#     data_eval: tuple[Float[Array, "batch 1"], Float[Array, "batch 2"]],
+#     data_train: tuple[Float[Array, "batch 1"], Float[Array, "batch 2"]],
+# ) -> None:
+#     t_eval, x_eval = data_eval
+#     t_train, x_train = data_train
+#
+#     x1 = jax.vmap(model1)(t_eval)
+#     x2 = jax.vmap(model2)(t_eval)
+#
+#     print("MSE 1:", jnp.mean((x1 - x_eval) ** 2))
+#     print("MSE 2:", jnp.mean((x2 - x_eval) ** 2))
+#
+#     fig, ax = plt.subplots(figsize=(7, 3.5), constrained_layout=True)
+#     ax.plot(t_eval, x_eval[:, 0], color="black", linewidth=1, label="True")
+#     ax.scatter(t_train, x_train[:, 0], color="black", s=10)
+#     ax.plot(t_eval, x1[:, 0], linewidth=1, label="PINN")
+#     ax.plot(t_eval, x2[:, 0], linewidth=1, label="CINN")
+#     ax.set_xlabel(r"$t$")
+#     ax.set_ylabel(r"$x(t)$")
+#     ax.legend(loc="upper right")
+#     ax.margins(x=0.05, y=0.05)
+#     ax.spines["top"].set_visible(False)
+#     ax.spines["right"].set_visible(False)
+#     fig.savefig("plots/plot_8_trajectories.pdf", dpi=300, bbox_inches="tight")
+
+
 def plot_models(
     model1: Model,
     model2: Model,
     problem: InitialValueProblem,
-    data_eval: tuple[Float[Array, "batch 1"], Float[Array, "batch 2"]],
-    data_train: tuple[Float[Array, "batch 1"], Float[Array, "batch 2"]],
+    data_eval: tuple[Float[Array, "batch 1"], Float[Array, "batch 3"]],
+    data_train: tuple[Float[Array, "batch 1"], Float[Array, "batch 3"]],
 ) -> None:
     t_eval, x_eval = data_eval
     t_train, x_train = data_train
@@ -341,32 +415,96 @@ def plot_models(
     print("MSE 1:", jnp.mean((x1 - x_eval) ** 2))
     print("MSE 2:", jnp.mean((x2 - x_eval) ** 2))
 
-    plt.figure()
-    plt.plot(t_eval, x_eval[:, 0])
-    plt.plot(t_eval, x1[:, 0])
-    plt.plot(t_eval, x2[:, 0])
-    plt.scatter(t_train, x_train[:, 0])
-    plt.xlabel(r"$t$")
-    plt.ylabel(r"$x$")
-    plt.tight_layout()
-    plt.show()
+    fig, axes = plt.subplots(
+        3,
+        1,
+        figsize=(7, 6),
+        sharex=True,
+        constrained_layout=True,
+    )
+
+    labels = [r"$x(t)$", r"$y(t)$", r"$z(t)$"]
+
+    for i, (ax, label) in enumerate(zip(axes, labels)):
+        ax.plot(t_eval, x_eval[:, i], color="black", linewidth=1, label="True")
+        ax.scatter(t_train, x_train[:, i], color="black", s=10, zorder=3)
+        ax.plot(t_eval, x1[:, i], linewidth=1, label="PINN")
+        ax.plot(t_eval, x2[:, i], linewidth=1, label="CINN")
+
+        ax.set_ylabel(label)
+        ax.margins(x=0.05, y=0.05)
+
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+    axes[0].legend(loc="upper right")
+    axes[-1].set_xlabel(r"$t$")
+
+    fig.savefig(
+        "plots/plot_8_trajectories.pdf",
+        dpi=300,
+        bbox_inches="tight",
+    )
+
+
+def plot_model_errors(
+    model1: Model,
+    model2: Model,
+    problem: InitialValueProblem,
+    data_eval: tuple[Float[Array, "batch 1"], Float[Array, "batch 3"]],
+    data_train: tuple[Float[Array, "batch 1"], Float[Array, "batch 3"]],
+) -> None:
+    t_eval, x_eval = data_eval
+
+    x1 = jax.vmap(model1)(t_eval)
+    x2 = jax.vmap(model2)(t_eval)
+
+    error1 = jnp.linalg.norm(x1 - x_eval, axis=1)
+    error2 = jnp.linalg.norm(x2 - x_eval, axis=1)
+
+    print("Mean error 1:", jnp.mean(error1))
+    print("Mean error 2:", jnp.mean(error2))
+
+    fig, ax = plt.subplots(figsize=(7, 3.5), constrained_layout=True)
+
+    ax.plot(t_eval, error1, linewidth=1, label="PINN")
+    ax.plot(t_eval, error2, linewidth=1, label="CINN")
+
+    ax.set_xlabel(r"$t$")
+    ax.set_ylabel(r"$\|\hat{\mathbf{x}}(t)-\mathbf{x}(t)\|_2$")
+    ax.set_yscale("log")
+
+    ax.legend(loc="upper left")
+    ax.margins(x=0.05, y=0.05)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    fig.savefig(
+        "plots/plot_8_errors.pdf",
+        dpi=300,
+        bbox_inches="tight",
+    )
 
 
 def plot_losses(loss_1: list, loss_2: list):
     n_epochs_1 = len(loss_1)
-    epochs_1 = jnp.arange(1, n_epochs_1 + 1, 1)
+    epochs_1 = jnp.arange(1, n_epochs_1 + 1, 1) * 1000
 
     n_epochs_2 = len(loss_2)
-    epochs_2 = jnp.arange(1, n_epochs_2 + 1, 1)
+    epochs_2 = jnp.arange(1, n_epochs_2 + 1, 1) * 1000
 
-    plt.figure()
-    plt.plot(epochs_1, loss_1)
-    plt.plot(epochs_2, loss_2)
-    plt.xlabel(r"Epoch")
-    plt.ylabel(r"Loss")
-    plt.yscale("log")
-    plt.tight_layout()
-    plt.show()
+    fig, ax = plt.subplots(figsize=(7, 3.5), constrained_layout=True)
+    ax.plot(epochs_1, loss_1, linewidth=1, label="PINN")
+    ax.plot(epochs_2, loss_2, linewidth=1, label="CINN")
+    ax.set_xlabel(r"Epoch")
+    ax.set_ylabel(r"Loss")
+    ax.set_yscale("log")
+    ax.legend(loc="upper right")
+    ax.margins(x=0.05, y=0.05)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.savefig("plots/plot_8_losses.pdf", dpi=300, bbox_inches="tight")
 
 
 def main():
@@ -420,7 +558,10 @@ def main():
     x_eval = x_all[index_start:index_stop:index_step, :]
     data_eval = (t_eval, x_eval)
 
+    setup_plotting()
+
     plot_models(model, model_clv, system, data_eval, data_train)
+    plot_model_errors(model, model_clv, system, data_eval, data_train)
     # plot_losses(train_losses, train_losses_clv)
     plot_losses(validation_losses, validation_losses_clv)
 
