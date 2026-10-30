@@ -332,7 +332,7 @@ def hsl(h, s, l):
 
 
 def setup_plotting():
-    background = hsl(200, 20, 95)
+    background = hsl(0, 0, 100)
     text = hsl(40, 10, 10)
     secondary = hsl(40, 10, 50)
 
@@ -385,7 +385,7 @@ def setup_plotting():
 #     print("MSE 1:", jnp.mean((x1 - x_eval) ** 2))
 #     print("MSE 2:", jnp.mean((x2 - x_eval) ** 2))
 #
-#     fig, ax = plt.subplots(figsize=(7, 3.5), constrained_layout=True)
+#     fig, ax = plt.subplots(figsize=(5, 3.5), constrained_layout=True)
 #     ax.plot(t_eval, x_eval[:, 0], color="black", linewidth=1, label="True")
 #     ax.scatter(t_train, x_train[:, 0], color="black", s=10)
 #     ax.plot(t_eval, x1[:, 0], linewidth=1, label="PINN")
@@ -415,7 +415,7 @@ def plot_models(
     print("MSE 1:", jnp.mean((x_eval - x1) ** 2))
     print("MSE 2:", jnp.mean((x_eval - x2) ** 2))
 
-    fig, axes = plt.subplots(3, 1, figsize=(7, 6), sharex=True, constrained_layout=True)
+    fig, axes = plt.subplots(3, 1, figsize=(5, 6), sharex=True, constrained_layout=True)
 
     labels = [r"$x(t)$", r"$y(t)$", r"$z(t)$"]
 
@@ -453,7 +453,7 @@ def plot_model_errors(
     print("Mean error 1:", jnp.mean(error1))
     print("Mean error 2:", jnp.mean(error2))
 
-    fig, ax = plt.subplots(figsize=(7, 3.5), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(5, 3.5), constrained_layout=True)
     ax.plot(t_eval, error1, linewidth=1, label="PINN")
     ax.plot(t_eval, error2, linewidth=1, label="CINN")
     ax.set_xlabel(r"$t$")
@@ -473,7 +473,7 @@ def plot_losses(loss_1: list, loss_2: list):
     n_epochs_2 = len(loss_2)
     epochs_2 = jnp.arange(1, n_epochs_2 + 1, 1) * 1000
 
-    fig, ax = plt.subplots(figsize=(7, 3.5), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(5, 3.5), constrained_layout=True)
     ax.plot(epochs_1, loss_1, linewidth=1, label="PINN")
     ax.plot(epochs_2, loss_2, linewidth=1, label="CINN")
     ax.set_xlabel(r"Epoch")
