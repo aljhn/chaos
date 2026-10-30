@@ -1,4 +1,4 @@
-# Chaos-Aware PINNs
+# Chaos-Informed Neural Networks
 
 ### Setup
 1. Clone the repo

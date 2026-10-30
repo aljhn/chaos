@@ -393,7 +393,7 @@ def setup_plotting():
 #     ax.set_xlabel(r"$t$")
 #     ax.set_ylabel(r"$x(t)$")
 #     ax.legend(loc="upper right")
-#     ax.margins(x=0.05, y=0.05)
+#     ax.margins(x=0.02, y=0.02)
 #     ax.spines["top"].set_visible(False)
 #     ax.spines["right"].set_visible(False)
 #     fig.savefig("plots/plot_8_trajectories.pdf", dpi=300, bbox_inches="tight")
@@ -412,16 +412,10 @@ def plot_models(
     x1 = jax.vmap(model1)(t_eval)
     x2 = jax.vmap(model2)(t_eval)
 
-    print("MSE 1:", jnp.mean((x1 - x_eval) ** 2))
-    print("MSE 2:", jnp.mean((x2 - x_eval) ** 2))
+    print("MSE 1:", jnp.mean((x_eval - x1) ** 2))
+    print("MSE 2:", jnp.mean((x_eval - x2) ** 2))
 
-    fig, axes = plt.subplots(
-        3,
-        1,
-        figsize=(7, 6),
-        sharex=True,
-        constrained_layout=True,
-    )
+    fig, axes = plt.subplots(3, 1, figsize=(7, 6), sharex=True, constrained_layout=True)
 
     labels = [r"$x(t)$", r"$y(t)$", r"$z(t)$"]
 
@@ -430,21 +424,15 @@ def plot_models(
         ax.scatter(t_train, x_train[:, i], color="black", s=10, zorder=3)
         ax.plot(t_eval, x1[:, i], linewidth=1, label="PINN")
         ax.plot(t_eval, x2[:, i], linewidth=1, label="CINN")
-
         ax.set_ylabel(label)
-        ax.margins(x=0.05, y=0.05)
-
+        ax.margins(x=0.02, y=0.02)
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
 
     axes[0].legend(loc="upper right")
     axes[-1].set_xlabel(r"$t$")
 
-    fig.savefig(
-        "plots/plot_8_trajectories.pdf",
-        dpi=300,
-        bbox_inches="tight",
-    )
+    fig.savefig("plots/plot_8_trajectories.pdf", dpi=300, bbox_inches="tight")
 
 
 def plot_model_errors(
@@ -459,32 +447,23 @@ def plot_model_errors(
     x1 = jax.vmap(model1)(t_eval)
     x2 = jax.vmap(model2)(t_eval)
 
-    error1 = jnp.linalg.norm(x1 - x_eval, axis=1)
-    error2 = jnp.linalg.norm(x2 - x_eval, axis=1)
+    error1 = jnp.linalg.norm(x_eval - x1, axis=1)
+    error2 = jnp.linalg.norm(x_eval - x2, axis=1)
 
     print("Mean error 1:", jnp.mean(error1))
     print("Mean error 2:", jnp.mean(error2))
 
     fig, ax = plt.subplots(figsize=(7, 3.5), constrained_layout=True)
-
     ax.plot(t_eval, error1, linewidth=1, label="PINN")
     ax.plot(t_eval, error2, linewidth=1, label="CINN")
-
     ax.set_xlabel(r"$t$")
-    ax.set_ylabel(r"$\|\hat{\mathbf{x}}(t)-\mathbf{x}(t)\|_2$")
+    ax.set_ylabel(r"$\|\mathbf{x}(t) -  \hat{\mathbf{x}}(t)\|$")
     ax.set_yscale("log")
-
-    ax.legend(loc="upper left")
-    ax.margins(x=0.05, y=0.05)
-
+    ax.legend(loc="lower right")
+    ax.margins(x=0.02, y=0.02)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-
-    fig.savefig(
-        "plots/plot_8_errors.pdf",
-        dpi=300,
-        bbox_inches="tight",
-    )
+    fig.savefig("plots/plot_8_errors.pdf", dpi=300, bbox_inches="tight")
 
 
 def plot_losses(loss_1: list, loss_2: list):
@@ -501,7 +480,7 @@ def plot_losses(loss_1: list, loss_2: list):
     ax.set_ylabel(r"Loss")
     ax.set_yscale("log")
     ax.legend(loc="upper right")
-    ax.margins(x=0.05, y=0.05)
+    ax.margins(x=0.02, y=0.02)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     fig.savefig("plots/plot_8_losses.pdf", dpi=300, bbox_inches="tight")
